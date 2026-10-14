@@ -3,9 +3,6 @@ build/
 install/
 log/
 
-# repo pihak ketiga, klon sendiri
-src/vrx/
-
 # python
 __pycache__/
 *.pyc
