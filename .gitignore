@@ -1,0 +1,19 @@
+# hasil build colcon
+build/
+install/
+log/
+
+# repo pihak ketiga, klon sendiri
+src/vrx/
+
+# python
+__pycache__/
+*.pyc
+
+# data rekaman
+rosbag2_*/
+run_*/
+*.db3
+
+# editor
+.vscode/
