@@ -1,0 +1,47 @@
+# Parameter infrastruktur kontrol ASV.
+#
+# CATATAN PENTING: k_surge dan k_yaw di bawah diturunkan dari koefisien drag
+# di plugin SimpleHydrodynamics, yang nilainya masih PLACEHOLDER. Artinya
+# "perintah 1 m/s" belum tentu menghasilkan 1 m/s. Yang benar sekarang hanya
+# arah dan proporsinya. Angka ini dikalibrasi ulang setelah koefisien
+# hidrodinamika punya dasar pengukuran.
+
+thrust_allocator:
+  ros__parameters:
+    # Gaya maju total (N) = k_surge * vx
+    # Asalnya: drag surge F = xU*v + xUU*v|v| = 2v + 6v^2 -> pada v=1 m/s, F=8 N
+    k_surge: 8.0
+
+    # Momen yaw total (N.m) = k_yaw * wz
+    # Asalnya: drag yaw M = nR*w + nRR*w|w| = 2w + 3w^2 -> pada w=0.5 rad/s, M=1.75
+    k_yaw: 4.0
+
+    beam: 0.35          # jarak antar lambung, dari CAD
+    max_thrust: 40.0    # harus sama dengan max_thrust_cmd di asv.urdf.xacro
+    min_thrust: -30.0   # harus sama dengan min_thrust_cmd
+    cmd_timeout: 0.5    # detik tanpa cmd_vel -> thrust dinolkan
+    rate: 20.0
+    cmd_vel_topic: '/cmd_vel'
+    left_topic:  '/wamv/thrusters/left/thrust'
+    right_topic: '/wamv/thrusters/right/thrust'
+
+odom_from_sim:
+  ros__parameters:
+    pose_topic: '/wamv/pose'
+    pose_child_frame: 'wamv'
+    base_frame: 'wamv/base_link'   # cek dengan: ros2 topic echo /wamv/pose --once
+    odom_frame: 'odom'
+    map_frame:  'map'
+
+    # true  = node ini mengisi odom -> base_link (tahap uji Nav2)
+    # false = ORB-SLAM3 yang mengisi; node ini tetap menerbitkan
+    #         /odom_ground_truth sebagai pembanding untuk evaluasi
+    publish_tf: true
+
+    # map -> odom identitas. Matikan kalau ORB-SLAM3 sudah mengisinya,
+    # karena dua penerbit map->odom membuat TF berkedip tanpa pesan error.
+    publish_map_odom: true
+
+    vel_filter: 0.3
+    
+    zero_origin: true

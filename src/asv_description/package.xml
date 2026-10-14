@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>asv_description</name>
+  <version>0.1.0</version>
+  <description>
+    Model URDF/xacro ASV katamaran Kamatech untuk simulasi VRX
+    (ROS 2 Humble + Gazebo Garden). Geometri dan properti massa
+    berasal dari Fusion 360 via ACDC4Robot.
+  </description>
+
+  <maintainer email="bimaaryafadhilah@gmail.com">Bima Arya Fadhilah</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- xacro dipakai saat build untuk memvalidasi asv.urdf.xacro -->
+  <depend>xacro</depend>
+
+  <!-- dibutuhkan saat runtime untuk menerbitkan TF dari URDF -->
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>urdf</exec_depend>
+
+  <!-- hanya untuk verifikasi manual pohon joint di RViz -->
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

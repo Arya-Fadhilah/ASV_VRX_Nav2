@@ -1,0 +1,461 @@
+<?xml version="1.0"?>
+<!-- ================================================================
+     Kamatech ASV - katamaran, untuk VRX (humble branch / Gazebo Garden)
+     Dibangun ulang dari keluaran ACDC4Robot.
+     Geometri & inersia: dari Fusion (via ACDC4Robot).
+     Massa: DIKOREKSI - Fusion memberi densitas baja 7850 ke 3 komponen.
+     Koefisien hidrodinamika: PLACEHOLDER, wajib disetel.
+     ================================================================ -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="asv">
+
+  <!-- WAJIB: VRX xacro_cmd() selalu melempar 4 argumen ini.
+       Kalau salah satu tidak dideklarasikan -> "undefined local" -> spawn gagal. -->
+  <xacro:arg name="namespace"           default="asv"/>
+  <xacro:arg name="locked"              default="false"/>
+  <xacro:arg name="vrx_sensors_enabled" default="true"/>
+  <xacro:arg name="thruster_config"     default="H"/>
+
+  <!-- ===================== ASUMSI MATERIAL =======================
+       Lambung  : PLA            1240 kg/m^3  (shell dinding ~2.4 mm)
+       Balok    : aluminium      2700 kg/m^3
+       Kotak    : PP tupperware   905 kg/m^3, DIHITUNG BERONGGA dinding 2 mm
+                  (mesh-nya balok pejal - kalau dipakai apa adanya jadi 6,76 kg)
+       Thruster : campuran plastik + motor, 0,35 kg (kelas T200). TIMBANG.
+       ============================================================= -->
+  <xacro:property name="box_shell_mass" value="0.519"/>
+  <!-- Isi kotak: baterai, komputer, ESC, kabel. UBAH SESUAI TIMBANGAN. -->
+  <xacro:property name="payload_mass"   value="1.0"/>
+
+  <!-- ====================== SAKLAR UJI ===========================
+       false = propeller + plugin Thruster TIDAK dibuat sama sekali.
+       Dipakai untuk menguji apakah thruster yang menyebabkan kapal
+       bergerak/mantul sendiri tanpa perintah. Tidak ada gaya horizontal
+       lain di model ini: gaya apung selalu vertikal murni (Surface.cc:258),
+       drag selalu melawan gerak, dan angin di world bernilai 0.
+       ============================================================= -->
+  <xacro:property name="enable_thrusters" value="true"/>
+  <!-- false = plugin memakai PID torsi dan menimpakan gaya langsung.
+       true  = plugin memaksa kecepatan sendi lewat JointVelocityCmd, yang
+       pada propeller berinersia sangat kecil terbukti menggerakkan kapal
+       sendiri tanpa perintah. Dibiarkan false sampai terbukti stabil. -->
+  <xacro:property name="thruster_velocity_control" value="false"/>
+
+  <xacro:property name="mesh_pkg" value="package://asv_description/meshes"/>
+  <xacro:property name="mm"       value="0.001 0.001 0.001"/>
+
+  <!-- Geometri terukur dari STL (mm -> m) -->
+  <xacro:property name="hull_len"   value="0.650"/>
+  <xacro:property name="hull_wid"   value="0.100"/>
+  <xacro:property name="hull_hgt"   value="0.080"/>
+  <!-- Radius untuk MODEL SILINDER plugin Surface, bukan ukuran fisik.
+       0.064 dipilih supaya draft setimbang = 40,1 mm, cocok dengan hitungan
+       fisik langsung: 2 lambung x 0,65 m x 0,10 m lebar x faktor bentuk 0,85
+       harus memindahkan 4,48 L -> draft 40,6 mm. Kalibrasi, bukan setelan. -->
+  <xacro:property name="hull_rad_model" value="0.064"/>
+  <xacro:property name="hull_y"     value="0.175"/>   <!-- setengah jarak lambung -->
+  <xacro:property name="hull_x0"    value="-0.340425"/>
+  <xacro:property name="hull_z0"    value="-0.080"/>
+
+  <!-- =========================== BASE =========================== -->
+  <!-- base_link = badan kaku utama. Semua fixed joint akan dilebur
+       ke sini saat URDF dikonversi ke SDF, jadi plugin VRX menunjuk ke sini. -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- ====================== MAKRO LAMBUNG ======================= -->
+  <xacro:macro name="hull" params="side reflect">
+    <link name="hull_${side}">
+      <inertial>
+        <origin xyz="0.284273 0 0.043859" rpy="0 0 0"/>
+        <!-- PLA 1240: massa & inersia ACDC4Robot (densitas 1000) x 1.24 -->
+        <mass value="0.739554"/>
+        <inertia ixx="0.00158466" ixy="2.7322e-08" ixz="-0.00035137"
+                 iyy="0.02416650" iyz="-2.0402e-09" izz="0.02446096"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${mesh_pkg}/Body-Kapal-URDF-v4.stl" scale="${mm}"/>
+        </geometry>
+      </visual>
+      <!-- PRIMITIF, bukan mesh: dartsim tidak bisa membangun collision dari mesh -->
+      <collision>
+        <origin xyz="${hull_len/2} 0 ${hull_hgt/2}" rpy="0 0 0"/>
+        <geometry><box size="${hull_len} ${hull_wid} ${hull_hgt}"/></geometry>
+      </collision>
+    </link>
+    <joint name="base_to_hull_${side}" type="fixed">
+      <parent link="base_link"/>
+      <child  link="hull_${side}"/>
+      <origin xyz="${hull_x0} ${reflect*hull_y} ${hull_z0}" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:hull side="left"  reflect="1"/>
+  <xacro:hull side="right" reflect="-1"/>
+
+  <!-- ==================== MAKRO BALOK SILANG ==================== -->
+  <!-- Aluminium 2700 kg/m^3 (Fusion memberi baja): 1.099 -> 0.378 kg -->
+  <xacro:macro name="crossbeam" params="name x">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 ${hull_y} 0" rpy="0 0 0"/>
+        <mass value="0.378"/>
+        <inertia ixx="0.0038713" ixy="0" ixz="0"
+                 iyy="0.0000252" iyz="0" izz="0.0038713"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${mesh_pkg}/Urdf-Alprof-v2.stl" scale="${mm}"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 ${hull_y} 0" rpy="0 0 0"/>
+        <geometry><box size="0.02 0.35 0.02"/></geometry>
+      </collision>
+    </link>
+    <joint name="base_to_${name}" type="fixed">
+      <parent link="base_link"/>
+      <child  link="${name}"/>
+      <origin xyz="${x} -${hull_y} 0.01" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:crossbeam name="beam_fore" x="0.138575"/>
+  <xacro:crossbeam name="beam_aft"  x="-0.138575"/>
+
+  <!-- ==================== KOTAK ELEKTRONIK ====================== -->
+  <!-- Fusion: 58.6 kg (baja pejal!). Diset 3.0 kg = enclosure kosong + isi.
+       GANTI dengan massa timbangan asli kalau sudah ada. -->
+  <link name="box_electronics">
+    <inertial>
+      <origin xyz="0 0 0.0395" rpy="0 0 0"/>
+      <!-- cangkang PP berongga (6 pelat, teorema sumbu sejajar)
+           + muatan dimodelkan sebagai balok padat mengisi rongga -->
+      <mass value="${box_shell_mass + payload_mass}"/>
+      <inertia ixx="${0.007505 + payload_mass*0.01072842}" ixy="0" ixz="0"
+               iyy="${0.004997 + payload_mass*0.00659508}" iyz="0"
+               izz="${0.011250 + payload_mass*0.01628333}"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/Kotak-Urdf-v3.stl" scale="${mm}"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0395" rpy="0 0 0"/>
+      <geometry><box size="0.27 0.35 0.079"/></geometry>
+    </collision>
+  </link>
+  <joint name="base_to_box" type="fixed">
+    <parent link="base_link"/>
+    <child  link="box_electronics"/>
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ======================== THRUSTER ========================== -->
+  <!-- 1.94 kg (baja) -> 0.35 kg (kelas T200) -->
+  <xacro:macro name="thruster" params="side reflect">
+    <link name="thruster_${side}">
+      <inertial>
+        <origin xyz="0 0.035 0.000141" rpy="0 0 0"/>
+        <mass value="0.35"/>
+        <inertia ixx="0.00024215" ixy="0" ixz="0"
+                 iyy="0.00019757" iyz="0" izz="0.00024026"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${mesh_pkg}/Thruster-URDF-v1.stl" scale="${mm}"/>
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0.035 0" rpy="1.5708 0 0"/>
+        <geometry><cylinder radius="0.034" length="0.070"/></geometry>
+      </collision>
+    </link>
+    <joint name="base_to_thruster_${side}" type="fixed">
+      <parent link="base_link"/>
+      <child  link="thruster_${side}"/>
+      <origin xyz="-0.261425 ${reflect*hull_y} -0.119100" rpy="0 0 1.5708"/>
+    </joint>
+
+    <!-- Propeller dummy. Hanya dibuat kalau enable_thrusters true. -->
+    <xacro:if value="${enable_thrusters}">
+    <link name="prop_${side}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <!-- Cakram tipis d=0,076 m, m=0,020 kg. I=1/2*m*r^2 pada sumbu putar
+             (Y, sesuai <axis>), 1/4*m*r^2 pada dua sumbu lain. Rumus yang
+             sama dipakai WAM-V: 0,5*0,5*0,24^2 = 0,0144, cocok dengan
+             nilai di wamv_description. Nilai lama 1e-6 adalah karangan. -->
+        <mass value="0.020"/>
+        <inertia ixx="7.22e-6" ixy="0" ixz="0"
+                 iyy="1.444e-5" iyz="0" izz="7.22e-6"/>
+      </inertial>
+    </link>
+    <joint name="prop_joint_${side}" type="continuous">
+      <parent link="thruster_${side}"/>
+      <child  link="prop_${side}"/>
+      <origin xyz="0 0.070 0" rpy="0 0 0"/>
+      <!-- Sumbu -Y, supaya thrust positif = MAJU.
+           Diverifikasi dari SDF hasil konversi: pose joint ini ber-yaw
+           1.5708 terhadap base_link, dan Rz(90 deg) memetakan +Y lokal ke
+           -X dunia. Bukti independennya ada di posisi joint itu sendiri:
+           offset (0, 0.070, 0) di frame thruster muncul sebagai
+           x = -0.261425 - 0.070 = -0.331425 di SDF.
+           Jadi (0,1,0) -> mundur, (0,-1,0) -> maju.
+           Setelah build, pastikan SDF menunjukkan <xyz>0 -1 0</xyz>. -->
+      <axis xyz="0 -1 0"/>
+    </joint>
+    </xacro:if>
+  </xacro:macro>
+
+  <xacro:thruster side="left"  reflect="1"/>
+  <xacro:thruster side="right" reflect="-1"/>
+
+    <!-- ======================== SENSOR ============================= -->
+  <!-- Posisi kamera: di atas kotak elektronik, menghadap haluan (+X).
+       Kotak membentang z 0,020..0,099 jadi 0,13 berarti 3 cm di atasnya.
+       Garis air ada di z = -0,040, jadi tinggi kamera di atas air 17 cm.
+       SESUAIKAN dengan posisi kamera di ASV fisik supaya hasilnya
+       transferable - tinggi kamera menentukan seberapa jauh horizon dan
+       berapa banyak permukaan air yang masuk frame. -->
+  <xacro:property name="cam_x" value="0.10"/>
+  <xacro:property name="cam_y" value="0.00"/>
+  <xacro:property name="cam_z" value="0.13"/>
+
+  <!-- IMX219, form factor Pi Camera v2: 25 x 23 x 9 mm, 3,4 g dengan kabel.
+       Sumbu lensa searah X, lebar board di Y, tinggi board di Z.
+       Origin link = pusat optik (ujung depan barel), jadi badan modulnya
+       digeser -4,5 mm di X. -->
+  <link name="camera_link">
+    <visual>
+      <origin xyz="-0.0045 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.009 0.025 0.023"/></geometry>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0045 0 0" rpy="0 0 0"/>
+      <mass value="0.003"/>
+      <inertia ixx="2.885e-7" ixy="0" ixz="0"
+               iyy="1.525e-7" iyz="0" izz="1.765e-7"/>
+    </inertial>
+  </link>
+
+  <joint name="base_to_camera" type="fixed">
+    <parent link="base_link"/>
+    <child  link="camera_link"/>
+    <origin xyz="${cam_x} ${cam_y} ${cam_z}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Frame optik. Rotasi (-pi/2, 0, -pi/2) mengubah konvensi ENU
+       (X maju, Y kiri, Z atas) jadi konvensi kamera (Z maju, X kanan,
+       Y bawah). Disalin persis dari wamv_camera.xacro. Inilah frame
+       yang dipakai ORB-SLAM3, bukan camera_link. -->
+  <joint name="camera_to_optical" type="fixed">
+    <parent link="camera_link"/>
+    <child  link="camera_link_optical"/>
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+  </joint>
+  <link name="camera_link_optical"/>
+
+  <gazebo reference="camera_link">
+    <sensor name="front_camera" type="camera">
+      <always_on>1</always_on>
+      <update_rate>20.0</update_rate>
+      <visualize>false</visualize>
+      <!-- JANGAN tambahkan <topic>: VRX menyusun topik gz dari jalur
+           berskop, dan <topic> akan memutus bridge otomatisnya. -->
+      <gz_frame_id>wamv/camera_link</gz_frame_id>
+      <camera name="front_camera">
+        <horizontal_fov>1.309</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <!-- far dinaikkan dari 50 ke 400: di perairan terbuka garis pantai
+             adalah satu-satunya sumber fitur, dan jaraknya puluhan meter. -->
+        <clip><near>0.02</near><far>400.0</far></clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.005</stddev>
+        </noise>
+      </camera>
+    </sensor>
+  </gazebo>
+
+  <!-- IMU. Sendi sengaja revolute dengan limit nol, BUKAN fixed - pola ini
+       disalin dari wamv_imu.xacro. Nilai derau diambil apa adanya dari
+       sana; ganti kalau sudah punya spesifikasi IMU fisik lu. -->
+  <link name="imu_link">
+    <visual>
+      <geometry><box size="0.0154 0.0255 0.002"/></geometry>
+    </visual>
+    <inertial>
+      <mass value="0.00272"/>
+      <inertia ixx="1.483e-7" ixy="0" ixz="0"
+               iyy="5.466e-8" iyz="0" izz="2.012e-7"/>
+    </inertial>
+  </link>
+
+  <joint name="base_to_imu" type="fixed">
+    <parent link="base_link"/>
+    <child  link="imu_link"/>
+    <origin xyz="${cam_x} ${cam_y} 0.15" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>200</update_rate>
+      <!-- JANGAN tambahkan <topic>: VRX menyusun topik gz dari jalur
+           berskop, dan <topic> akan memutus bridge otomatisnya. -->
+      <frame_id>wamv/imu_link</frame_id>
+      <gz_frame_id>wamv/imu_link</gz_frame_id>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></z>
+        </linear_acceleration>
+        <!-- Tidak ada di SDF TB3-mu. Ditambahkan supaya orientasi yang
+             diterbitkan punya acuan eksplisit. ORB-SLAM3 mono-inertial
+             memakai giro dan akselerometer mentah, bukan orientasi, jadi
+             ini tidak mempengaruhi SLAM - tapi benar untuk konsumen lain. -->
+        <orientation_reference_frame>
+          <localization>ENU</localization>
+        </orientation_reference_frame>
+      </imu>
+    </sensor>
+  </gazebo>
+
+  <!-- ===================== PLUGIN VRX =========================== -->
+  <gazebo>
+    <!-- Satu Surface per lambung (katamaran). Titik disebar depan-belakang
+         supaya pitch ikut terselesaikan, bukan cuma heave. -->
+    <plugin name="vrx::Surface" filename="libSurface.so">
+      <link_name>base_link</link_name>
+      <hull_length>${hull_len}</hull_length>
+      <hull_radius>${hull_rad_model}</hull_radius>
+      <fluid_level>0</fluid_level>
+      <fluid_density>997.8</fluid_density>
+      <!-- Titik apung di DASAR lambung (z = hull_z0 = -0.080), bukan di
+           tengahnya. Dengan begitu deltaZ di Surface.cc berarti draft secara
+           harfiah, dan batas jenuh (deltaZ = hull_radius) terjadi jauh di
+           bawah titik setimbang. Nilai lama -0.04 membuat garis air berakhir
+           di z = +5,2 mm, yaitu DI ATAS puncak lambung - lambung tenggelam. -->
+      <points>
+        <point>0.22  ${hull_y} ${hull_z0}</point>
+        <point>-0.22 ${hull_y} ${hull_z0}</point>
+      </points>
+      <wavefield>
+        <topic>/vrx/wavefield/parameters</topic>
+      </wavefield>
+    </plugin>
+
+    <plugin name="vrx::Surface" filename="libSurface.so">
+      <link_name>base_link</link_name>
+      <hull_length>${hull_len}</hull_length>
+      <hull_radius>${hull_rad_model}</hull_radius>
+      <fluid_level>0</fluid_level>
+      <fluid_density>997.8</fluid_density>
+      <!-- Titik apung di DASAR lambung (z = hull_z0 = -0.080), bukan di
+           tengahnya. Dengan begitu deltaZ di Surface.cc berarti draft secara
+           harfiah, dan batas jenuh (deltaZ = hull_radius) terjadi jauh di
+           bawah titik setimbang. Nilai lama -0.04 membuat garis air berakhir
+           di z = +5,2 mm, yaitu DI ATAS puncak lambung - lambung tenggelam. -->
+      <points>
+        <point>0.22  -${hull_y} ${hull_z0}</point>
+        <point>-0.22 -${hull_y} ${hull_z0}</point>
+      </points>
+      <wavefield>
+        <topic>/vrx/wavefield/parameters</topic>
+      </wavefield>
+    </plugin>
+
+    <!-- PLACEHOLDER. Diskalakan kasar dari WAM-V (180 kg / 4.9 m) ke
+         kapal ini (~5.6 kg / 0.65 m). Belum ada dasar CFD/uji tarik. -->
+    <plugin name="vrx::SimpleHydrodynamics" filename="libSimpleHydrodynamics.so">
+      <link_name>base_link</link_name>
+      <xDotU>0.2</xDotU>  <yDotV>1.5</yDotV>  <zDotW>1.5</zDotW>
+      <kDotP>0.05</kDotP> <mDotQ>0.05</mDotQ> <nDotR>0.1</nDotR>
+      <xU>2.0</xU>    <xUU>6.0</xUU>
+      <yV>12.0</yV>   <yVV>30.0</yVV>
+      <zW>30.0</zW>   <zWW>0.0</zWW>
+      <kP>1.5</kP>    <kPP>2.0</kPP>
+      <mQ>2.5</mQ>    <mQQ>3.0</mQQ>
+      <nR>2.0</nR>    <nRR>3.0</nRR>
+    </plugin>
+
+    <!-- Thruster kiri/kanan. VRX payload_from_sdf() otomatis membuat
+         bridge-nya; tidak perlu didaftarkan manual. -->
+
+    <plugin filename="libgz-sim-pose-publisher-system.so"
+            name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>false</publish_link_pose>
+      <publish_sensor_pose>true</publish_sensor_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_nested_model_pose>true</publish_nested_model_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <update_frequency>50</update_frequency>
+      <static_publisher>false</static_publisher>
+    </plugin>
+
+    <plugin filename="gz-sim-joint-state-publisher-system"
+            name="gz::sim::systems::JointStatePublisher">
+    </plugin>
+
+    <xacro:if value="${enable_thrusters}">
+    <plugin name="gz::sim::systems::Thruster" filename="gz-sim-thruster-system">
+      <namespace>$(arg namespace)</namespace>
+      <joint_name>prop_joint_left</joint_name>
+      <thrust_coefficient>0.004</thrust_coefficient>
+      <fluid_density>997.8</fluid_density>
+      <propeller_diameter>0.076</propeller_diameter>
+      <velocity_control>${thruster_velocity_control}</velocity_control>
+      <max_thrust_cmd>40.0</max_thrust_cmd>
+      <min_thrust_cmd>-30.0</min_thrust_cmd>
+      <topic>thrusters/left/thrust</topic>
+      <!-- WAJIB. Tidak dipakai Gazebo, tapi vrx_gz/model.py baris 290
+           (name_from_plugin) mencari elemen <name> di sini untuk menyusun
+           nama bridge. Kalau tidak ada, fungsinya mengembalikan None dan
+           launch gagal: "can only concatenate str (not NoneType) to str". -->
+      <name>left</name>
+    </plugin>
+
+    <plugin name="gz::sim::systems::Thruster" filename="gz-sim-thruster-system">
+      <namespace>$(arg namespace)</namespace>
+      <joint_name>prop_joint_right</joint_name>
+      <thrust_coefficient>0.004</thrust_coefficient>
+      <fluid_density>997.8</fluid_density>
+      <propeller_diameter>0.076</propeller_diameter>
+      <velocity_control>${thruster_velocity_control}</velocity_control>
+      <max_thrust_cmd>40.0</max_thrust_cmd>
+      <min_thrust_cmd>-30.0</min_thrust_cmd>
+      <topic>thrusters/right/thrust</topic>
+      <!-- WAJIB. Tidak dipakai Gazebo, tapi vrx_gz/model.py baris 290
+           (name_from_plugin) mencari elemen <name> di sini untuk menyusun
+           nama bridge. Kalau tidak ada, fungsinya mengembalikan None dan
+           launch gagal: "can only concatenate str (not NoneType) to str". -->
+      <name>right</name>
+    </plugin>
+    </xacro:if>
+  </gazebo>
+
+</robot>

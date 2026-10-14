@@ -1,0 +1,276 @@
+<?xml version="1.0"?>
+<!-- =====================================================================
+     ASV Kamatech - URDF dengan joint lengkap
+     Dibenahi dari keluaran ACDC4Robot (ASV.sdf / ASV.urdf).
+
+     YANG DIUBAH dari keluaran asli:
+       1. Nama link dibuat unik (asli: 3 pasang nama kembar)
+       2. base_link + 9 joint ditambahkan (asli: 0 joint)
+       3. filename mesh: "meshes/x.stl" -> "package://asv_description/meshes/x.stl"
+          (path relatif tidak bisa di-resolve oleh ROS)
+
+     Massa, inersia, mesh, dan collision SENGAJA dibiarkan apa adanya
+     supaya kelihatan jelas apa yang berubah. Keduanya masih bermasalah:
+       - massa 3 komponen pakai densitas baja 7850 (total 65,9 kg -> tenggelam)
+       - collision pakai mesh (dartsim tidak bisa, gagal diam-diam)
+     Dua itu sudah dibenahi di asv.urdf.xacro. File ini untuk verifikasi
+     pohon (check_urdf) dan cek visual di RViz, bukan untuk Gazebo.
+
+     Angka <origin> diambil langsung dari <pose> tiap link di ASV.sdf,
+     dibulatkan ke 6 desimal (sisanya noise CAD orde mikron).
+     ===================================================================== -->
+<robot name="ASV">
+
+  <!-- ============================ ROOT ============================ -->
+  <!-- base_link: frame acuan kapal, tanpa geometri.
+       Inilah satu-satunya link yang tidak pernah jadi <child>. -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- ====================== LAMBUNG KIRI (+y) ===================== -->
+  <link name="hull_left">
+    <inertial>
+      <origin xyz="0.284273 -0.00000056 0.043859" rpy="0 0 0"/>
+      <mass value="0.5964042774866632"/>
+      <inertia ixx="0.001277945241257565"  ixy="2.203418842609134e-08"
+               ixz="-0.0002833654369287981" iyy="0.019489107158087864"
+               iyz="-1.645273492965893e-09" izz="0.019726575236940012"/>
+    </inertial>
+    <visual name="hull_left_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Body-Kapal-URDF-v4.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="hull_left_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Body-Kapal-URDF-v4.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_hull_left" type="fixed">
+    <parent link="base_link"/>
+    <child  link="hull_left"/>
+    <origin xyz="-0.340425 0.175000 -0.080000" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ====================== LAMBUNG KANAN (-y) ==================== -->
+  <link name="hull_right">
+    <inertial>
+      <origin xyz="0.284273 -0.00000056 0.043859" rpy="0 0 0"/>
+      <mass value="0.5964042774866632"/>
+      <inertia ixx="0.0012779452412575686" ixy="2.2034188423489254e-08"
+               ixz="-0.0002833654369287981" iyy="0.019489107158087864"
+               iyz="-1.645273493399575e-09"  izz="0.01972657523694"/>
+    </inertial>
+    <visual name="hull_right_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Body-Kapal-URDF-v4.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="hull_right_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Body-Kapal-URDF-v4.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_hull_right" type="fixed">
+    <parent link="base_link"/>
+    <child  link="hull_right"/>
+    <origin xyz="-0.340425 -0.175000 -0.080000" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ================== BALOK SILANG DEPAN (+x) =================== -->
+  <!-- Mesh membentang Y dari 0 sampai 350 mm, jadi joint ditaruh di
+       y = -0.175 supaya balok merentang penuh -0.175 .. +0.175 -->
+  <link name="beam_fore">
+    <inertial>
+      <origin xyz="0 0.175000 0" rpy="0 0 0"/>
+      <mass value="1.099"/>
+      <inertia ixx="0.011255591666666663" ixy="0" ixz="0"
+               iyy="7.326666666666523e-05" iyz="0"
+               izz="0.011255591666666658"/>
+    </inertial>
+    <visual name="beam_fore_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Urdf-Alprof-v2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="beam_fore_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Urdf-Alprof-v2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_beam_fore" type="fixed">
+    <parent link="base_link"/>
+    <child  link="beam_fore"/>
+    <origin xyz="0.138575 -0.175000 0.010000" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ================== BALOK SILANG BELAKANG (-x) ================ -->
+  <link name="beam_aft">
+    <inertial>
+      <origin xyz="0 0.175000 0" rpy="0 0 0"/>
+      <mass value="1.099"/>
+      <inertia ixx="0.011255591666666663" ixy="0" ixz="0"
+               iyy="7.326666666666523e-05" iyz="0"
+               izz="0.011255591666666658"/>
+    </inertial>
+    <visual name="beam_aft_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Urdf-Alprof-v2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="beam_aft_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Urdf-Alprof-v2.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_beam_aft" type="fixed">
+    <parent link="base_link"/>
+    <child  link="beam_aft"/>
+    <origin xyz="-0.138575 -0.175000 0.010000" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ====================== KOTAK ELEKTRONIK ====================== -->
+  <link name="box_electronics">
+    <inertial>
+      <origin xyz="0 0 0.039500" rpy="0 0 0"/>
+      <mass value="58.604175"/>
+      <inertia ixx="0.6287300078062501" ixy="0" ixz="-4.5693013255030614e-17"
+               iyy="0.38649941780624997" iyz="4.5693013817071933e-17"
+               izz="0.9542713162499998"/>
+    </inertial>
+    <visual name="box_electronics_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Kotak-Urdf-v3.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="box_electronics_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Kotak-Urdf-v3.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_box" type="fixed">
+    <parent link="base_link"/>
+    <child  link="box_electronics"/>
+    <origin xyz="0 0 0.020000" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ===================== THRUSTER KIRI (+y) ===================== -->
+  <!-- yaw 90 deg: sumbu +Y lokal thruster mengarah ke buritan kapal -->
+  <link name="thruster_left">
+    <inertial>
+      <origin xyz="0 0.035000 0.000141" rpy="0 0 0"/>
+      <mass value="1.9445389533338442"/>
+      <inertia ixx="0.0013453101569077253" ixy="1.2843225124217038e-17"
+               ixz="-6.9388939039072276e-18" iyy="0.0010976420577002433"
+               iyz="-1.2342346868745996e-20"  izz="0.0013348046764057042"/>
+    </inertial>
+    <visual name="thruster_left_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Thruster-URDF-v1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="thruster_left_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Thruster-URDF-v1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_thruster_left" type="fixed">
+    <parent link="base_link"/>
+    <child  link="thruster_left"/>
+    <origin xyz="-0.261425 0.175000 -0.119100" rpy="0 0 1.5707963267949"/>
+  </joint>
+
+  <!-- Propeller dummy kiri.
+       TIDAK ada di CAD-mu - thruster diekspor sebagai satu benda utuh.
+       Plugin gz Thruster wajib diberi joint revolute untuk diputar,
+       jadi link ini dibuat tanpa visual. Kalau mau propellernya benar-benar
+       terlihat berputar, pisahkan body propeller di Fusion lalu ganti ini. -->
+  <link name="prop_left">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="prop_joint_left" type="continuous">
+    <parent link="thruster_left"/>
+    <child  link="prop_left"/>
+    <origin xyz="0 0.070000 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- ==================== THRUSTER KANAN (-y) ===================== -->
+  <link name="thruster_right">
+    <inertial>
+      <origin xyz="0 0.035000 0.000141" rpy="0 0 0"/>
+      <mass value="1.9445389533338442"/>
+      <inertia ixx="0.0013453101569077253" ixy="1.2843225124217038e-17"
+               ixz="0" iyy="0.0010976420577002433"
+               iyz="0" izz="0.0013348046764057042"/>
+    </inertial>
+    <visual name="thruster_right_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Thruster-URDF-v1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision name="thruster_right_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://asv_description/meshes/Thruster-URDF-v1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_thruster_right" type="fixed">
+    <parent link="base_link"/>
+    <child  link="thruster_right"/>
+    <origin xyz="-0.261425 -0.175000 -0.119100" rpy="0 0 1.5707963267949"/>
+  </joint>
+
+  <link name="prop_right">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="prop_joint_right" type="continuous">
+    <parent link="thruster_right"/>
+    <child  link="prop_right"/>
+    <origin xyz="0 0.070000 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+</robot>

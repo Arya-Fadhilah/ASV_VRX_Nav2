@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>asv_control</name>
+  <version>0.1.0</version>
+  <description>
+    Infrastruktur kontrol ASV untuk simulasi VRX: alokasi thrust dari
+    geometry_msgs/Twist ke dua thruster, dan penerbit odometry yang
+    sumbernya bisa ditukar antara ground truth simulasi dan SLAM.
+
+    Catatan scope: paket ini sengaja dibuat sesederhana mungkin. Perancangan
+    sistem kontrol bukan kontribusi skripsi - ini hanya penyambung supaya
+    Nav2 bisa menggerakkan ASV dan divalidasi.
+  </description>
+  <maintainer email="bimaaryafadhilah@gmail.com">Bima Arya Fadhilah</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
