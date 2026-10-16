@@ -1,0 +1,35 @@
+# -----------------------------------------------------------------------------
+#  Daftar waypoint GPS untuk ASV.
+#
+#  Waypoint disimpan dalam lat/lon, bukan x/y, supaya daftar yang sama bisa
+#  dipakai di simulasi dan di lapangan tanpa diubah. Konversi ke frame `map`
+#  dilakukan saat runtime oleh gps_waypoint_follower.py.
+#
+#  datum:
+#    Titik asal frame `map`. KOSONGKAN (hapus blok datum) kalau mau node
+#    mengambilnya otomatis dari rata-rata 10 fix GPS pertama saat start.
+#
+#    TAPI untuk run eksperimen, ISI datum secara eksplisit. Datum otomatis
+#    berarti frame `map` berpindah sedikit tiap kali kamu menjalankan ulang
+#    simulasi, sehingga dua run tidak lagi bisa dibandingkan posisi per posisi.
+#    Dengan datum tetap, waypoint jatuh di koordinat metrik yang sama persis
+#    di setiap run, dan itulah syarat supaya perbandingan lintasan
+#    (ground truth sim vs ORB-SLAM3) jadi sah.
+#
+#  Cara mengisi:
+#    1. Jalankan simulasi, tunggu ASV mengapung stabil.
+#    2. ros2 topic echo /wamv/sensors/gps/gps/fix --once
+#    3. Salin latitude/longitude-nya ke blok datum di bawah.
+#    4. Hasilkan waypoint di sekitarnya dengan skrip kecil (lihat catatan
+#       di jawaban), lalu tempel ke daftar waypoints.
+# -----------------------------------------------------------------------------
+
+datum:
+  latitude: -33.72276273
+  longitude: 150.67399574
+
+waypoints:
+  - {latitude: -33.72276273, longitude: 150.67415758}   # 15 m timur, 0 m utara
+  - {latitude: -33.72262749, longitude: 150.67415758}   # 15 m timur, 15 m utara
+  - {latitude: -33.72262749, longitude: 150.67399574}   # 0 m timur, 15 m utara
+  - {latitude: -33.72276273, longitude: 150.67399574}   # 0 m timur, 0 m utara

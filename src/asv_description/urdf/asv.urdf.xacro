@@ -4,6 +4,7 @@
      Dibangun ulang dari keluaran ACDC4Robot.
      Geometri & inersia: dari Fusion (via ACDC4Robot).
      Massa: DIKOREKSI - Fusion memberi densitas baja 7850 ke 3 komponen.
+     Thruster: DIPERBARUI 15 Okt 2026 dari spesifikasi kotak unit asli.
      Koefisien hidrodinamika: PLACEHOLDER, wajib disetel.
      ================================================================ -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="asv">
@@ -20,7 +21,17 @@
        Balok    : aluminium      2700 kg/m^3
        Kotak    : PP tupperware   905 kg/m^3, DIHITUNG BERONGGA dinding 2 mm
                   (mesh-nya balok pejal - kalau dipakai apa adanya jadi 6,76 kg)
-       Thruster : campuran plastik + motor, 0,35 kg (kelas T200). TIMBANG.
+       Thruster : TERUKUR dari kotak unit asli, bukan asumsi lagi.
+                  "Brushless underwater propeller", 162 g per unit TOTAL,
+                  12-24 V, 13 A, 30-200 W, motor 480 kV,
+                  panjang total 75 mm, diameter badan 74 mm,
+                  diameter propeler 60 mm,
+                  bahan: bearing 304 stainless + shell aluminium,
+                         propeler PLA/PC.
+                  162 g dibagi jadi badan 152 g + propeler 10 g.
+                  CATATAN: pembagian 152/10 ini ESTIMASI - yang tertulis di
+                  kotak hanya totalnya. Timbang propelernya terpisah kalau
+                  bisa dilepas.
        ============================================================= -->
   <xacro:property name="box_shell_mass" value="0.519"/>
   <!-- Isi kotak: baterai, komputer, ESC, kabel. UBAH SESUAI TIMBANGAN. -->
@@ -48,9 +59,13 @@
   <xacro:property name="hull_wid"   value="0.100"/>
   <xacro:property name="hull_hgt"   value="0.080"/>
   <!-- Radius untuk MODEL SILINDER plugin Surface, bukan ukuran fisik.
-       0.064 dipilih supaya draft setimbang = 40,1 mm, cocok dengan hitungan
-       fisik langsung: 2 lambung x 0,65 m x 0,10 m lebar x faktor bentuk 0,85
-       harus memindahkan 4,48 L -> draft 40,6 mm. Kalibrasi, bukan setelan. -->
+       0.064 dikalibrasi saat massa total masih 4,50 kg, menghasilkan draft
+       40,1 mm (terukur /odom z = 0,03975, meleset 0,2 mm dari prediksi).
+       Setelah massa thruster dikoreksi, massa total turun ke 4,085 kg,
+       jadi draft baru diprediksi 37,6 mm -> /odom z sekitar 0,0424.
+       hull_rad_model SENGAJA TIDAK diubah: dia mewakili bentuk lambung,
+       bukan beratnya. Draft yang bergeser adalah konsekuensi fisik yang
+       benar, bukan kesalahan kalibrasi. VERIFIKASI angka 0,0424 itu. -->
   <xacro:property name="hull_rad_model" value="0.064"/>
   <xacro:property name="hull_y"     value="0.175"/>   <!-- setengah jarak lambung -->
   <xacro:property name="hull_x0"    value="-0.340425"/>
@@ -161,14 +176,22 @@
   </joint>
 
   <!-- ======================== THRUSTER ========================== -->
-  <!-- 1.94 kg (baja) -> 0.35 kg (kelas T200) -->
+  <!-- Riwayat massa: 1,94 kg (Fusion, baja) -> 0,35 kg (tebakan kelas T200)
+       -> 0,152 kg (TERUKUR, 162 g total dikurangi 10 g propeler).
+       Inersia dimodelkan sebagai silinder PEJAL r = 0,037 m, L = 0,075 m
+       (diameter badan 74 mm, panjang total 75 mm dari kotak).
+         iyy = 1/2*m*r^2            = 0,5*0,152*0,037^2   = 1,040e-4
+         ixx = izz = 1/12*m*(3r^2+L^2) = 0,152*0,009732/12 = 1,233e-4
+       Aslinya shell berongga, yang inersianya sedikit LEBIH BESAR untuk
+       massa yang sama. Selisihnya kecil dibanding ketidakpastian lain,
+       tapi catat kalau nanti dipakai untuk klaim kuantitatif. -->
   <xacro:macro name="thruster" params="side reflect">
     <link name="thruster_${side}">
       <inertial>
         <origin xyz="0 0.035 0.000141" rpy="0 0 0"/>
-        <mass value="0.35"/>
-        <inertia ixx="0.00024215" ixy="0" ixz="0"
-                 iyy="0.00019757" iyz="0" izz="0.00024026"/>
+        <mass value="0.152"/>
+        <inertia ixx="1.233e-4" ixy="0" ixz="0"
+                 iyy="1.040e-4" iyz="0" izz="1.233e-4"/>
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -176,9 +199,12 @@
           <mesh filename="${mesh_pkg}/Thruster-URDF-v1.stl" scale="${mm}"/>
         </geometry>
       </visual>
+      <!-- Dimensi disesuaikan ke unit asli: r 0,034 -> 0,037, L 0,070 -> 0,075.
+           rpy 1.5708 di sumbu X memutar sumbu silinder dari Z ke -Y, searah
+           dengan sumbu dorong. -->
       <collision>
         <origin xyz="0 0.035 0" rpy="1.5708 0 0"/>
-        <geometry><cylinder radius="0.034" length="0.070"/></geometry>
+        <geometry><cylinder radius="0.037" length="0.075"/></geometry>
       </collision>
     </link>
     <joint name="base_to_thruster_${side}" type="fixed">
@@ -192,13 +218,16 @@
     <link name="prop_${side}">
       <inertial>
         <origin xyz="0 0 0" rpy="0 0 0"/>
-        <!-- Cakram tipis d=0,076 m, m=0,020 kg. I=1/2*m*r^2 pada sumbu putar
-             (Y, sesuai <axis>), 1/4*m*r^2 pada dua sumbu lain. Rumus yang
-             sama dipakai WAM-V: 0,5*0,5*0,24^2 = 0,0144, cocok dengan
-             nilai di wamv_description. Nilai lama 1e-6 adalah karangan. -->
-        <mass value="0.020"/>
-        <inertia ixx="7.22e-6" ixy="0" ixz="0"
-                 iyy="1.444e-5" iyz="0" izz="7.22e-6"/>
+        <!-- Cakram tipis d = 0,060 m (DARI KOTAK, sebelumnya ditebak 0,076),
+             m = 0,010 kg. I = 1/2*m*r^2 pada sumbu putar (Y, sesuai <axis>),
+             1/4*m*r^2 pada dua sumbu lain.
+               iyy = 0,5*0,010*0,030^2  = 4,5e-6
+               ixx = izz = 0,25*...     = 2,25e-6
+             Rumus yang sama dipakai WAM-V. Nilai 1e-6 yang paling awal
+             adalah karangan dan terbukti membuat kapal bergerak sendiri. -->
+        <mass value="0.010"/>
+        <inertia ixx="2.25e-6" ixy="0" ixz="0"
+                 iyy="4.5e-6"  iyz="0" izz="2.25e-6"/>
       </inertial>
     </link>
     <joint name="prop_joint_${side}" type="continuous">
@@ -221,21 +250,27 @@
   <xacro:thruster side="left"  reflect="1"/>
   <xacro:thruster side="right" reflect="-1"/>
 
-    <!-- ======================== SENSOR ============================= -->
-  <!-- Posisi kamera: di atas kotak elektronik, menghadap haluan (+X).
-       Kotak membentang z 0,020..0,099 jadi 0,13 berarti 3 cm di atasnya.
-       Garis air ada di z = -0,040, jadi tinggi kamera di atas air 17 cm.
-       SESUAIKAN dengan posisi kamera di ASV fisik supaya hasilnya
-       transferable - tinggi kamera menentukan seberapa jauh horizon dan
-       berapa banyak permukaan air yang masuk frame. -->
+
+
+<!-- ======================== SENSOR ============================= -->
+<!-- Posisi kamera: di atas kotak elektronik, menghadap haluan (+X).
+    Kotak membentang z 0,020..0,099 jadi 0,13 berarti 3 cm di atasnya.
+    Dengan draft baru 37,6 mm garis air ada di z = -0,0424, jadi tinggi
+    kamera di atas air sekitar 17,2 cm. Artinya kapal harus turun lebih
+    dari 172 mm sebelum lensa tercelup - itu ambang go/no-go untuk
+    masalah "tenggelam saat manuver".
+    SESUAIKAN dengan posisi kamera di ASV fisik supaya hasilnya
+    transferable - tinggi kamera menentukan seberapa jauh horizon dan
+    berapa banyak permukaan air yang masuk frame. -->
+
   <xacro:property name="cam_x" value="0.10"/>
   <xacro:property name="cam_y" value="0.00"/>
   <xacro:property name="cam_z" value="0.13"/>
 
-  <!-- IMX219, form factor Pi Camera v2: 25 x 23 x 9 mm, 3,4 g dengan kabel.
-       Sumbu lensa searah X, lebar board di Y, tinggi board di Z.
-       Origin link = pusat optik (ujung depan barel), jadi badan modulnya
-       digeser -4,5 mm di X. -->
+<!-- IMX219, form factor Pi Camera v2: 25 x 23 x 9 mm, 3,4 g dengan kabel.
+Sumbu lensa searah X, lebar board di Y, tinggi board di Z.
+Origin link = pusat optik (ujung depan barel), jadi badan modulnya
+digeser -4,5 mm di X. -->
   <link name="camera_link">
     <visual>
       <origin xyz="-0.0045 0 0" rpy="0 0 0"/>
@@ -269,7 +304,7 @@
   <gazebo reference="camera_link">
     <sensor name="front_camera" type="camera">
       <always_on>1</always_on>
-      <update_rate>20.0</update_rate>
+      <update_rate>30.0</update_rate>
       <visualize>false</visualize>
       <!-- JANGAN tambahkan <topic>: VRX menyusun topik gz dari jalur
            berskop, dan <topic> akan memutus bridge otomatisnya. -->
@@ -293,9 +328,9 @@
     </sensor>
   </gazebo>
 
-  <!-- IMU. Sendi sengaja revolute dengan limit nol, BUKAN fixed - pola ini
-       disalin dari wamv_imu.xacro. Nilai derau diambil apa adanya dari
-       sana; ganti kalau sudah punya spesifikasi IMU fisik lu. -->
+<!-- IMU. Sendi sengaja revolute dengan limit nol, BUKAN fixed - pola ini
+disalin dari wamv_imu.xacro. Nilai derau diambil apa adanya dari
+sana; ganti kalau sudah punya spesifikasi IMU fisik lu. -->
   <link name="imu_link">
     <visual>
       <geometry><box size="0.0154 0.0255 0.002"/></geometry>
@@ -340,6 +375,35 @@
           <localization>ENU</localization>
         </orientation_reference_frame>
       </imu>
+    </sensor>
+  </gazebo>
+
+<!-- GPS. Antena di belakang kamera supaya tidak menghalangi FOV.
+Massa 30 g = modul GNSS kelas NEO-M8N dengan antena patch.
+Sensor ini TIDAK masuk TF tree untuk lokalisasi - perannya hanya
+memberi datum lat/lon untuk konversi waypoint. -->
+  <link name="gps_link">
+    <visual>
+      <geometry><box size="0.05 0.05 0.015"/></geometry>
+    </visual>
+    <inertial>
+      <mass value="0.030"/>
+      <inertia ixx="6.81e-6" ixy="0" ixz="0"
+               iyy="6.81e-6" iyz="0" izz="1.25e-5"/>
+    </inertial>
+  </link>
+
+  <joint name="base_to_gps" type="fixed">
+    <parent link="base_link"/>
+    <child  link="gps_link"/>
+    <origin xyz="-0.05 0 0.14" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo reference="gps_link">
+    <sensor name="navsat" type="navsat">
+      <always_on>1</always_on>
+      <update_rate>20.0</update_rate>
+      <gz_frame_id>wamv/gps_link</gz_frame_id>
     </sensor>
   </gazebo>
 
@@ -388,7 +452,9 @@
     </plugin>
 
     <!-- PLACEHOLDER. Diskalakan kasar dari WAM-V (180 kg / 4.9 m) ke
-         kapal ini (~5.6 kg / 0.65 m). Belum ada dasar CFD/uji tarik. -->
+         kapal ini (4,085 kg / 0.65 m). Belum ada dasar CFD/uji tarik.
+         18 koefisien di bawah ini semuanya karangan dan HARUS diukur
+         sebelum angka apa pun dari simulasi ini dipakai sebagai hasil. -->
     <plugin name="vrx::SimpleHydrodynamics" filename="libSimpleHydrodynamics.so">
       <link_name>base_link</link_name>
       <xDotU>0.2</xDotU>  <yDotV>1.5</yDotV>  <zDotW>1.5</zDotW>
@@ -402,7 +468,22 @@
     </plugin>
 
     <!-- Thruster kiri/kanan. VRX payload_from_sdf() otomatis membuat
-         bridge-nya; tidak perlu didaftarkan manual. -->
+         bridge-nya; tidak perlu didaftarkan manual.
+
+         max_thrust_cmd / min_thrust_cmd:
+         Kotak unit TIDAK menyebut gaya dorong sama sekali, hanya daya.
+         Batas atas teoretis dari teori momentum (actuator disk):
+           T_ideal = (2 * rho * A * P^2)^(1/3)
+                   = (2 * 1000 * 2,827e-3 * 200^2)^(1/3) = 60,9 N
+         dengan A = pi*(0,030)^2 dan P = 200 W (daya maksimum dari kotak).
+         Itu angka efisiensi 100% yang tidak mungkin dicapai; thruster kecil
+         tanpa duct umumnya 40-60% dari ideal -> 24-36 N.
+         Dipilih 25 N sebagai placeholder yang bisa dipertahankan,
+         mundur -18 N (propeler non-simetris: 60-75% dari maju).
+         GANTI kalau sudah dapat angka thrust dari penjual atau hasil ukur
+         sendiri. JANGAN dinaikkan hanya supaya Nav2 terlihat bagus - kalau
+         kapal asli tidak sanggup 0,6 m/s, yang turun harusnya
+         desired_linear_vel, bukan yang naik max_thrust_cmd. -->
 
     <plugin filename="libgz-sim-pose-publisher-system.so"
             name="gz::sim::systems::PosePublisher">
@@ -427,10 +508,10 @@
       <joint_name>prop_joint_left</joint_name>
       <thrust_coefficient>0.004</thrust_coefficient>
       <fluid_density>997.8</fluid_density>
-      <propeller_diameter>0.076</propeller_diameter>
+      <propeller_diameter>0.060</propeller_diameter>
       <velocity_control>${thruster_velocity_control}</velocity_control>
-      <max_thrust_cmd>40.0</max_thrust_cmd>
-      <min_thrust_cmd>-30.0</min_thrust_cmd>
+      <max_thrust_cmd>25.0</max_thrust_cmd>
+      <min_thrust_cmd>-18.0</min_thrust_cmd>
       <topic>thrusters/left/thrust</topic>
       <!-- WAJIB. Tidak dipakai Gazebo, tapi vrx_gz/model.py baris 290
            (name_from_plugin) mencari elemen <name> di sini untuk menyusun
@@ -444,10 +525,10 @@
       <joint_name>prop_joint_right</joint_name>
       <thrust_coefficient>0.004</thrust_coefficient>
       <fluid_density>997.8</fluid_density>
-      <propeller_diameter>0.076</propeller_diameter>
+      <propeller_diameter>0.060</propeller_diameter>
       <velocity_control>${thruster_velocity_control}</velocity_control>
-      <max_thrust_cmd>40.0</max_thrust_cmd>
-      <min_thrust_cmd>-30.0</min_thrust_cmd>
+      <max_thrust_cmd>25.0</max_thrust_cmd>
+      <min_thrust_cmd>-18.0</min_thrust_cmd>
       <topic>thrusters/right/thrust</topic>
       <!-- WAJIB. Tidak dipakai Gazebo, tapi vrx_gz/model.py baris 290
            (name_from_plugin) mencari elemen <name> di sini untuk menyusun

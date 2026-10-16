@@ -24,6 +24,8 @@ setup(
         'console_scripts': [
             'thrust_allocator = asv_control.thrust_allocator:main',
             'odom_from_sim    = asv_control.odom_from_sim:main',
+            'gps_waypoint_follower = asv_control.gps_waypoint_follower:main',
+            'gps_waypoint_interactive = asv_control.gps_waypoint_interactive:main',
         ],
     },
 )
